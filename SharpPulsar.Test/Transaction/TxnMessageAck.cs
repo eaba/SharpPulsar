@@ -28,7 +28,7 @@ namespace SharpPulsar.Test.Transaction
 		[Fact]
 		public void TxnMessageAckTest()
 		{
-			string topic = $"{_topicMessageAckTest}-{Guid.NewGuid()}";
+			var topic = $"{_topicMessageAckTest}-{Guid.NewGuid()}";
 			var subName = $"test-{Guid.NewGuid()}";
 
 			var consumerBuilder = new ConsumerConfigBuilder<byte[]>()
@@ -46,27 +46,27 @@ namespace SharpPulsar.Test.Transaction
 
 			var producer = _client.NewProducer(producerBuilder);
 
-			User.Transaction txn = Txn;
+			var txn = Txn;
 
-			int messageCnt = 10;
-			for (int i = 0; i < messageCnt; i++)
+			var messageCnt = 10;
+			for (var i = 0; i < messageCnt; i++)
 			{
 				producer.NewMessage(txn).Value(Encoding.UTF8.GetBytes("Hello Txn - " + i)).Send();
 			}
 			_output.WriteLine("produce transaction messages finished");
 
 			// Can't receive transaction messages before commit.
-			var message = consumer.Receive(TimeSpan.FromMilliseconds(5000));
+			var message = consumer.Receive();
 			Assert.Null(message);
 			_output.WriteLine("transaction messages can't be received before transaction committed");
 
 			txn.Commit();
 
-			int ackedMessageCount = 0;
-			int receiveCnt = 0;
-			for (int i = 0; i < messageCnt; i++)
+			var ackedMessageCount = 0;
+			var receiveCnt = 0;
+			for (var i = 0; i < messageCnt; i++)
 			{
-				message = consumer.Receive(TimeSpan.FromSeconds(10));
+				message = consumer.Receive();
 				Assert.NotNull(message);
 				receiveCnt++;
 				if (i % 2 == 0)
@@ -77,23 +77,23 @@ namespace SharpPulsar.Test.Transaction
 			}
 			Assert.Equal(messageCnt, receiveCnt);
 
-			message = consumer.Receive(TimeSpan.FromMilliseconds(5000));
+			message = consumer.Receive();
 			Assert.Null(message);
 
 			consumer.RedeliverUnacknowledgedMessages();
 
 			Thread.Sleep(TimeSpan.FromSeconds(30));
 			receiveCnt = 0;
-			for (int i = 0; i < messageCnt - ackedMessageCount; i++)
+			for (var i = 0; i < messageCnt - ackedMessageCount; i++)
 			{
-				message = consumer.Receive(TimeSpan.FromMilliseconds(10000));
+				message = consumer.Receive();
 				Assert.NotNull(message);
 				consumer.Acknowledge(message);
 				receiveCnt++;
 			}
 			Assert.Equal(messageCnt - ackedMessageCount, receiveCnt);
 
-			message = consumer.Receive(TimeSpan.FromMilliseconds(2000));
+			message = consumer.Receive();
 			Assert.Null(message);
 			_output.WriteLine($"receive transaction messages count: {receiveCnt}");
 		}
@@ -102,7 +102,7 @@ namespace SharpPulsar.Test.Transaction
 
 			get
 			{
-				return (User.Transaction)_client.NewTransaction().WithTransactionTimeout(2000).Build();
+				return (User.Transaction)_client.NewTransaction().WithTransactionTimeout(TimeSpan.FromMinutes(5)).Build();
 			}
 		}
 

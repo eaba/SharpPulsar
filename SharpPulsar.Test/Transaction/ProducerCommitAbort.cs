@@ -8,6 +8,7 @@ using SharpPulsar.Extension;
 using Xunit;
 using Xunit.Abstractions;
 using SharpPulsar.Common;
+using System.Net.Http;
 
 /// <summary>
 /// Licensed to the Apache Software Foundation (ASF) under one
@@ -40,20 +41,31 @@ namespace SharpPulsar.Test.Transaction
 
 		private const string TENANT = "public";
 		private static readonly string _nAMESPACE1 = TENANT + "/default";
-		private static readonly string _topicOutput = _nAMESPACE1 + $"/output-{Guid.NewGuid()}";
+		private static readonly string _topicOutput = _nAMESPACE1 + $"/output-txn-{DateTime.Now.Ticks}";
 		private static readonly string _topicMessageAckTest = _nAMESPACE1 + "/message-ack-test";
 
 		private readonly ITestOutputHelper _output;
 		private readonly PulsarClient _client;
-		public ProducerCommitAbort(ITestOutputHelper output, PulsarStandaloneClusterFixture fixture)
+        private readonly User.Admin _admin;
+        public ProducerCommitAbort(ITestOutputHelper output, PulsarStandaloneClusterFixture fixture)
 		{
 			_output = output;
 			_client = fixture.Client;
-		}
-		[Fact]
+            _admin = new User.Admin("http://localhost:8080/", new HttpClient());
+
+            try
+            {
+                //var response = _admin.SetRetention("public", "default", retentionPolicies: new SharpPulsar.Admin.Models.RetentionPolicies(retentionTimeInMinutes: 3600, retentionSizeInMB: 1000));
+                //var bla = response;
+            }
+            catch { }
+        }
+        [Fact]
 		public void ProduceCommitTest()
 		{
-			var topic = $"{_topicOutput}-{Guid.NewGuid()}";
+            var txn1 = Txn;
+            var txn2 = Txn;
+			var topic = $"{_topicOutput}";
 			var consumerBuilder = new ConsumerConfigBuilder<byte[]>()
 				.Topic(topic)
 				.SubscriptionName($"test-{Guid.NewGuid()}");
@@ -64,34 +76,48 @@ namespace SharpPulsar.Test.Transaction
 				.Topic(topic)
 				.SendTimeout(0);
 
-			Producer<byte[]> producer = _client.NewProducer(producerBuilder);
+			var producer = _client.NewProducer(producerBuilder);
 
-			User.Transaction txn = Txn;
-
-			int txnMessageCnt = 0;
-			int messageCnt = 40;
-			for(int i = 0; i < messageCnt; i++)
+			var txnMessageCnt = 0;
+			var messageCnt = 10;
+			for(var i = 0; i < messageCnt; i++)
 			{
-				producer.NewMessage(txn).Value(Encoding.UTF8.GetBytes("Hello Txn - " + i)).Send();
-				txnMessageCnt++;
+                if(i % 5 == 0)
+                    producer.NewMessage(txn1).Value(Encoding.UTF8.GetBytes("Hello Txn - " + i)).Send();
+                else
+                    producer.NewMessage(txn2).Value(Encoding.UTF8.GetBytes("Hello Txn - " + i)).Send();
+
+                txnMessageCnt++;
 			}
 
 			// Can't receive transaction messages before commit.
-			var message = consumer.Receive(TimeSpan.FromMilliseconds(2000));
+			var message = consumer.Receive();
 			Assert.Null(message);
 
-			txn.Commit();
-			// txn1 messages could be received after txn1 committed
-			int receiveCnt = 0;
-			for(int i = 0; i < txnMessageCnt; i++)
+			txn1.Commit();
+            _output.WriteLine($"Committed 1");
+            txn2.Commit();
+            _output.WriteLine($"Committed 1");
+            // txn1 messages could be received after txn1 committed
+            var receiveCnt = 0;
+			for(var i = 0; i < txnMessageCnt; i++)
 			{
-				message = consumer.Receive(TimeSpan.FromSeconds(10));
+				message = consumer.Receive();
 				Assert.NotNull(message);
+                _output.WriteLine(Encoding.UTF8.GetString(message.Value));
 				receiveCnt++;
 			}
-			Assert.Equal(txnMessageCnt, receiveCnt);
 
-			message = consumer.Receive(TimeSpan.FromMilliseconds(5000));
+
+            for (var i = 0; i < txnMessageCnt; i++)
+            {
+                message = consumer.Receive();
+                Assert.NotNull(message);
+                receiveCnt++;
+            }
+            Assert.Equal(txnMessageCnt, receiveCnt);
+
+			message = consumer.Receive();
 			Assert.Null(message);
 
 			_output.WriteLine($"message commit test enableBatch {true}");
@@ -99,48 +125,51 @@ namespace SharpPulsar.Test.Transaction
 		[Fact]
 		public void ProduceCommitBatchedTest()
 		{
-			var topic = $"{_topicOutput}-{Guid.NewGuid()}";
-			var consumerBuilder = new ConsumerConfigBuilder<byte[]>()
-				.Topic(topic)
-				.SubscriptionName($"test-{Guid.NewGuid()}")
-				.EnableBatchIndexAcknowledgment(true);
-			var consumer = _client.NewConsumer(consumerBuilder);
+
+            var txn = Txn;
+
+            var topic = $"{_topicOutput}-{Guid.NewGuid()}";
 
 			var producerBuilder = new ProducerConfigBuilder<byte[]>()
 				.Topic(topic)
-				.EnableBatching(true)
+				//.EnableBatching(true)
 				.SendTimeout(0);
 
-			Producer<byte[]> producer = _client.NewProducer(producerBuilder);
+			var producer = _client.NewProducer(producerBuilder);
 
-			User.Transaction txn = Txn;
-
-			int txnMessageCnt = 0;
-			int messageCnt = 40;
-			for(int i = 0; i < messageCnt; i++)
+            var txnMessageCnt = 0;
+			var messageCnt = 40;
+			for(var i = 0; i < messageCnt; i++)
 			{
 				producer.NewMessage(txn).Value(Encoding.UTF8.GetBytes("Hello Txn - " + i)).Send();
 				txnMessageCnt++;
 			}
 
-			// Can't receive transaction messages before commit.
-			var message = consumer.Receive(TimeSpan.FromMilliseconds(5000));
+            var consumerBuilder = new ConsumerConfigBuilder<byte[]>()
+                .Topic(topic)
+                .SubscriptionName($"test2")
+                .EnableBatchIndexAcknowledgment(true)
+                .SubscriptionInitialPosition(SubscriptionInitialPosition.Earliest);
+
+            var consumer = _client.NewConsumer(consumerBuilder);
+            // Can't receive transaction messages before commit.
+            var message = consumer.Receive();
 			Assert.Null(message);
 
 			txn.Commit();
 
 			// txn1 messages could be received after txn1 committed
-			int receiveCnt = 0;
-			for(int i = 0; i < txnMessageCnt; i++)
+			var receiveCnt = 0;
+			for(var i = 0; i < txnMessageCnt; i++)
 			{
-				message = consumer.Receive(TimeSpan.FromSeconds(10));
+				message = consumer.Receive();
 				Assert.NotNull(message);
 				receiveCnt++;
 				_output.WriteLine($"message receive count: {receiveCnt}");
 			}
 			Assert.Equal(txnMessageCnt, receiveCnt);
 
-			message = consumer.Receive(TimeSpan.FromMilliseconds(5000));
+			message = consumer.Receive();
 			Assert.Null(message);
 
 			_output.WriteLine($"message commit test enableBatch {true}");
@@ -148,46 +177,44 @@ namespace SharpPulsar.Test.Transaction
 		[Fact]
 		public void ProduceAbortTest()
 		{
-			User.Transaction txn = Txn;
-			
+			var txn = Txn;
 
 			var producerBuilder = new ProducerConfigBuilder<byte[]>();
 			producerBuilder.Topic(_topicOutput);
-			producerBuilder.EnableBatching(true);
 			producerBuilder.SendTimeout(0);
 
 			var producer = _client.NewProducer(producerBuilder);
 
-			int messageCnt = 10;
-			for(int i = 0; i < messageCnt; i++)
+			var messageCnt = 10;
+			for(var i = 0; i < messageCnt; i++)
 			{
 				producer.NewMessage(txn).Value(Encoding.UTF8.GetBytes("Hello Txn - " + i)).Send();
 			}
 
 			var consumerBuilder = new ConsumerConfigBuilder<byte[]>();
 			consumerBuilder.Topic(_topicOutput);
-			consumerBuilder.SubscriptionName("test");
+			consumerBuilder.SubscriptionName($"test{DateTime.Now.Ticks}");
 			consumerBuilder.EnableBatchIndexAcknowledgment(true);
 			consumerBuilder.SubscriptionInitialPosition(SubscriptionInitialPosition.Earliest);
 			var consumer = _client.NewConsumer(consumerBuilder);
 
 			// Can't receive transaction messages before abort.
-			var message = consumer.Receive(TimeSpan.FromMilliseconds(5000));
-			Assert.Null(message);
+			var message = consumer.Receive();
+            Assert.Null(message);
 
 			txn.Abort();
 
-			// Cant't receive transaction messages after abort.
-			message = consumer.Receive(TimeSpan.FromMilliseconds(5000));
+            // Cant't receive transaction messages after abort.
+            message = consumer.Receive();
 			Assert.Null(message);
-		}
+        }
 
 		private User.Transaction Txn
 		{
 			
 			get
 			{
-				return (User.Transaction)_client.NewTransaction().WithTransactionTimeout(2000).Build();
+				return (User.Transaction)_client.NewTransaction().WithTransactionTimeout(TimeSpan.FromMinutes(5)).Build();
 			}
 		}
 

@@ -76,8 +76,8 @@ namespace SharpPulsar.Test.Api
         {
             var topic = $"persistent://public/default/my-topic-{Guid.NewGuid()}";
 
-            Random r = new Random(0);
-            byte[] byteKey = new byte[1000];
+            var r = new Random(0);
+            var byteKey = new byte[1000];
             r.NextBytes(byteKey);
 
             var producerBuilder = new ProducerConfigBuilder<byte[]>();
@@ -95,7 +95,7 @@ namespace SharpPulsar.Test.Api
             consumerBuilder.Topic(topic);
             consumerBuilder.SubscriptionName($"ByteKeysTest-subscriber-{Guid.NewGuid()}");
             var consumer = _client.NewConsumer(consumerBuilder);
-            var message = consumer.Receive(TimeSpan.FromSeconds(30));
+            var message = consumer.Receive();
 
             Assert.Equal(byteKey, message.KeyBytes);
 
@@ -108,7 +108,7 @@ namespace SharpPulsar.Test.Api
         public void ProduceAndConsumeBatch()
 		{
 
-            Random r = new Random(0);
+            var r = new Random(0);
             var byteKey = new byte[1000];
             r.NextBytes(byteKey);
 
@@ -149,10 +149,6 @@ namespace SharpPulsar.Test.Api
                 .Properties(new Dictionary<string, string> { { "KeyBytes", Encoding.UTF8.GetString(byteKey) } })
                 .Value(Encoding.UTF8.GetBytes($"TestMessage-4"))
                 .Send();
-
-            var sent = producer.SendReceipt();
-            if (sent != null)
-                _output.WriteLine($"Highest Sequence Id => {sent.SequenceId}:{sent.HighestSequenceId}");
 
 
             var message = consumer.Receive();

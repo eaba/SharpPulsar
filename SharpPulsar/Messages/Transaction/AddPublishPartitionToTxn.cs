@@ -1,4 +1,5 @@
-﻿using SharpPulsar.Protocol.Proto;
+﻿using Akka.Actor;
+using SharpPulsar.Protocol.Proto;
 using SharpPulsar.Transaction;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -9,6 +10,7 @@ namespace SharpPulsar.Messages.Transaction
     {
         public TxnID TxnID { get; }
         public ImmutableList<string> Topics { get; }
+
         public AddPublishPartitionToTxn(TxnID txnID, IList<string> topics)
         {
             TxnID = txnID;

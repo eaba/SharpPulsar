@@ -33,14 +33,14 @@ namespace SharpPulsar.Test.Transaction
 		public void TxnCumulativeAckTest()
 		{
 
-			string normalTopic = _nAMESPACE1 + $"/normal-topic-{Guid.NewGuid()}";
+			var normalTopic = _nAMESPACE1 + $"/normal-topic-{Guid.NewGuid()}";
 			var consumerBuilder = new ConsumerConfigBuilder<byte[]>()
 				.Topic(normalTopic)
 				.SubscriptionName($"test-{Guid.NewGuid()}")
-				.SubscriptionType(SubType.Failover)
+				//.SubscriptionType(SubType.Failover)
 				.EnableBatchIndexAcknowledgment(true)
 				.AcknowledgmentGroupTime(3000)
-				.AckTimeout(10000, TimeUnit.MILLISECONDS);
+				.AckTimeout(TimeSpan.FromMilliseconds(10000));
 
 			var consumer = _client.NewConsumer(consumerBuilder);
 
@@ -49,19 +49,19 @@ namespace SharpPulsar.Test.Transaction
 
 			var producer = _client.NewProducer(producerBuilder);
 
-			for (int retryCnt = 0; retryCnt < 2; retryCnt++)
+			for (var retryCnt = 0; retryCnt < 2; retryCnt++)
 			{
-				User.Transaction abortTxn = Txn;
-				int messageCnt = 50;
+				var abortTxn = Txn;
+				var messageCnt = 50;
 				// produce normal messages
-				for (int i = 0; i < messageCnt; i++)
+				for (var i = 0; i < messageCnt; i++)
 				{
 					producer.NewMessage().Value(Encoding.UTF8.GetBytes("Hello")).Send();
 				}
 				IMessage<byte[]> message = null;
-				for (int i = 0; i < messageCnt; i++)
+				for (var i = 0; i < messageCnt; i++)
 				{
-					message = consumer.Receive(TimeSpan.FromSeconds(5));
+					message = consumer.Receive();
 					Assert.NotNull(message);
 					if (i % 3 == 0)
 					{
@@ -70,14 +70,14 @@ namespace SharpPulsar.Test.Transaction
 					_output.WriteLine($"receive msgId abort: {message.MessageId}, retryCount : {retryCnt}, count : {i}");
 				}
 				// the messages are pending ack state and can't be received
-				message = consumer.Receive(TimeSpan.FromMilliseconds(2000));
+				message = consumer.Receive();
 				Assert.Null(message);
 
 				abortTxn.Abort();
-				User.Transaction commitTxn = Txn;
-				for (int i = 0; i < messageCnt; i++)
+				var commitTxn = Txn;
+				for (var i = 0; i < messageCnt; i++)
 				{
-					message = consumer.Receive(TimeSpan.FromSeconds(20));
+					message = consumer.Receive();
 					Assert.NotNull(message);
 					consumer.AcknowledgeCumulative(message.MessageId, commitTxn);
 					_output.WriteLine($"receive msgId abort: {message.MessageId}, retryCount : {retryCnt}, count : {i}");
@@ -85,7 +85,7 @@ namespace SharpPulsar.Test.Transaction
 
 				commitTxn.Commit();
 
-				message = consumer.Receive(TimeSpan.FromMilliseconds(1000));
+				message = consumer.Receive();
 				Assert.Null(message);
 			}
 		}
@@ -93,14 +93,14 @@ namespace SharpPulsar.Test.Transaction
 		public void TxnCumulativeAckTestBatched()
 		{
 
-			string normalTopic = _nAMESPACE1 + $"/normal-topic-{Guid.NewGuid()}";
+			var normalTopic = _nAMESPACE1 + $"/normal-topic-{Guid.NewGuid()}";
 			var consumerBuilder = new ConsumerConfigBuilder<byte[]>()
 				.Topic(normalTopic)
 				.SubscriptionName($"test-{Guid.NewGuid()}")
 				.EnableBatchIndexAcknowledgment(true)
 				.SubscriptionType(SubType.Failover)
 				.AcknowledgmentGroupTime(3000)
-				.AckTimeout(10000, TimeUnit.MILLISECONDS);
+				.AckTimeout(TimeSpan.FromMilliseconds(10000));
 
 			var consumer = _client.NewConsumer(consumerBuilder);
 
@@ -112,20 +112,20 @@ namespace SharpPulsar.Test.Transaction
 
 			var producer = _client.NewProducer(producerBuilder);
 
-			for (int retryCnt = 0; retryCnt < 2; retryCnt++)
+			for (var retryCnt = 0; retryCnt < 2; retryCnt++)
 			{
-				User.Transaction abortTxn = Txn;
-				int messageCnt = 100;
+				var abortTxn = Txn;
+				var messageCnt = 100;
 				// produce normal messages
-				for (int i = 0; i < messageCnt; i++)
+				for (var i = 0; i < messageCnt; i++)
 				{
 					producer.NewMessage().Value(Encoding.UTF8.GetBytes("Hello")).Send();
 				}
 				IMessage<byte[]> message = null;
 
-				for (int i = 0; i < messageCnt; i++)
+				for (var i = 0; i < messageCnt; i++)
 				{
-					message = consumer.Receive(TimeSpan.FromSeconds(5));
+					message = consumer.Receive();
 					Assert.NotNull(message);
 					if (i % 3 == 0)
 					{
@@ -137,14 +137,14 @@ namespace SharpPulsar.Test.Transaction
 				}
 				// consumer.AcknowledgeCumulative(message.MessageId, abortTxn);
 				// the messages are pending ack state and can't be received
-				message = consumer.Receive(TimeSpan.FromMilliseconds(2000));
+				message = consumer.Receive();
 				Assert.Null(message);
 
 				abortTxn.Abort();
-				User.Transaction commitTxn = Txn;
-				for (int i = 0; i < messageCnt; i++)
+				var commitTxn = Txn;
+				for (var i = 0; i < messageCnt; i++)
 				{
-					message = consumer.Receive(TimeSpan.FromSeconds(30));
+					message = consumer.Receive();
 					Assert.NotNull(message);
 					if (i % 3 == 0)
 					{
@@ -154,7 +154,7 @@ namespace SharpPulsar.Test.Transaction
 				}
 
 				commitTxn.Commit();
-				message = consumer.Receive(TimeSpan.FromMilliseconds(1000));
+				message = consumer.Receive();
 				Assert.Null(message);
 			}
 		}
@@ -165,7 +165,7 @@ namespace SharpPulsar.Test.Transaction
 
 			get
 			{
-				return (User.Transaction)_client.NewTransaction().WithTransactionTimeout(2000).Build();
+				return (User.Transaction)_client.NewTransaction().WithTransactionTimeout(TimeSpan.FromMinutes(5)).Build();
 			}
 		}
 	}

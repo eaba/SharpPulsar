@@ -45,18 +45,18 @@ namespace SharpPulsar.Test
 		[Fact]
 		public virtual void TestBinaryProtoToGetTopicsOfNamespacePersistent()
 		{
-			string key = Guid.NewGuid().ToString();
-			string subscriptionName = "regex-subscription";
-			string topicName1 = "persistent://public/default/reg-topic-1-" + key;
-			string topicName2 = "persistent://public/default/reg-topic-2-" + key;
-			string topicName3 = "persistent://public/default/reg-topic-3-" + key;
-			string topicName4 = "non-persistent://public/default/reg-topic-4-" + key;
-			Regex pattern = new Regex("public/default/reg-topic.*");
+			var key = Guid.NewGuid().ToString();
+			var subscriptionName = "regex-subscription";
+			var topicName1 = "persistent://public/default/reg-topic-1-" + key;
+			var topicName2 = "persistent://public/default/reg-topic-2-" + key;
+			var topicName3 = "persistent://public/default/reg-topic-3-" + key;
+			var topicName4 = "non-persistent://public/default/reg-topic-4-" + key;
+			var pattern = new Regex("public/default/reg-topic.*");
 
 
 			// 2. create producer
-			string messagePredicate = "my-message-" + key + "-";
-			int totalMessages = 30;
+			var messagePredicate = "my-message-" + key + "-";
+			var totalMessages = 30;
 
 			var producer1 = _client.NewProducer(new ProducerConfigBuilder<byte[]>()
 				.Topic(topicName1));
@@ -71,7 +71,7 @@ namespace SharpPulsar.Test
 				.Topic(topicName4));
 
 			// 5. produce data
-			for(int i = 0; i < 10; i++)
+			for(var i = 0; i < 10; i++)
 			{
 				producer1.Send(Encoding.UTF8.GetBytes(messagePredicate + "producer1-" + i));
 				producer2.Send(Encoding.UTF8.GetBytes(messagePredicate + "producer2-" + i));
@@ -84,18 +84,18 @@ namespace SharpPulsar.Test
 				.PatternAutoDiscoveryPeriod(2)
 				.SubscriptionName(subscriptionName)
 				.SubscriptionType(SubType.Shared)
-				.AckTimeout(2000, TimeUnit.MILLISECONDS));
+				.AckTimeout(TimeSpan.FromMilliseconds(2000)));
 
 			// 6. should receive all the message
-			int messageSet = 0;
-			var message = consumer.Receive(TimeSpan.FromSeconds(10));
+			var messageSet = 0;
+			var message = consumer.Receive();
 			do
 			{
 				var m = (TopicMessage<byte[]>)message;
 				messageSet++;
 				consumer.Acknowledge(message);
 				_output.WriteLine($"Consumer acknowledged : {Encoding.UTF8.GetString(message.Data)} from topic: {m.TopicName}");
-				message = consumer.Receive(TimeSpan.FromSeconds(20));
+				message = consumer.Receive();
 			} while(message != null);
 
 			consumer.Unsubscribe();
